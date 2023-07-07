@@ -37,7 +37,7 @@ impl Value {
             Some(Value::Num(x))
         } else if let Ok(b) = s.parse() {
             Some(Value::Bool(b))
-        } else if s.chars().next() == Some('"' /*"*/) {
+        } else if s.starts_with('"') {
             Some(Value::Str(s[1..].to_string()))
         } else {
             None
@@ -55,7 +55,7 @@ impl Value {
                     if i != 0 {
                         s += ", ";
                     }
-                    s += &format!("{}", l[i].clone().into_string());
+                    s += &l[i].clone().into_string().to_string();
                 }
                 s += "]";
                 s
@@ -132,82 +132,82 @@ fn input(msg: String) -> Value {
 
 fn eval(expr: &Expr, funcs: &HashMap<String, Func>, args: &Vec<Value>) -> Value {
     match expr {
-        Expr::If(pred, good, bad) => if eval(&pred, funcs, args) == Value::Bool(true) {
-            eval(&good, funcs, args)
+        Expr::If(pred, good, bad) => if eval(pred, funcs, args) == Value::Bool(true) {
+            eval(good, funcs, args)
         } else {
-            eval(&bad, funcs, args)
+            eval(bad, funcs, args)
         },
-        Expr::Eq(x, y) => Value::Bool(eval(&x, funcs, args) == eval(&y, funcs, args)),
-        Expr::Add(x, y) => match (eval(&x, funcs, args), eval(&y, funcs, args)) {
+        Expr::Eq(x, y) => Value::Bool(eval(x, funcs, args) == eval(y, funcs, args)),
+        Expr::Add(x, y) => match (eval(x, funcs, args), eval(y, funcs, args)) {
             (Value::Num(x), Value::Num(y)) => Value::Num(x + y),
             (Value::Str(x), Value::Str(y)) => Value::Str(x + &y),
             _ => Value::Null,
         },
-        Expr::Neg(x) => match eval(&x, funcs, args) {
+        Expr::Neg(x) => match eval(x, funcs, args) {
             Value::Num(x) => Value::Num(-x),
             _ => Value::Null,
         },
-        Expr::Mul(x, y) => match (eval(&x, funcs, args), eval(&y, funcs, args)) {
+        Expr::Mul(x, y) => match (eval(x, funcs, args), eval(y, funcs, args)) {
             (Value::Num(x), Value::Num(y)) => Value::Num(x * y),
             _ => Value::Null,
         },
-        Expr::Div(x, y) => match (eval(&x, funcs, args), eval(&y, funcs, args)) {
+        Expr::Div(x, y) => match (eval(x, funcs, args), eval(y, funcs, args)) {
             (Value::Num(x), Value::Num(y)) => Value::Num(x / y),
             _ => Value::Null,
         },
-        Expr::Rem(x, y) => match (eval(&x, funcs, args), eval(&y, funcs, args)) {
+        Expr::Rem(x, y) => match (eval(x, funcs, args), eval(y, funcs, args)) {
             (Value::Num(x), Value::Num(y)) => Value::Num(x % y),
             _ => Value::Null,
         },
-        Expr::Less(x, y) => match (eval(&x, funcs, args), eval(&y, funcs, args)) {
+        Expr::Less(x, y) => match (eval(x, funcs, args), eval(y, funcs, args)) {
             (Value::Num(x), Value::Num(y)) => Value::Bool(x < y),
             (Value::Str(x), Value::Str(y)) => Value::Bool(x < y),
             _ => Value::Null,
         },
-        Expr::LessEq(x, y) => match (eval(&x, funcs, args), eval(&y, funcs, args)) {
+        Expr::LessEq(x, y) => match (eval(x, funcs, args), eval(y, funcs, args)) {
             (Value::Num(x), Value::Num(y)) => Value::Bool(x <= y),
             (Value::Str(x), Value::Str(y)) => Value::Bool(x <= y),
             _ => Value::Null,
         },
-        Expr::Head(list) => match eval(&list, funcs, args) {
+        Expr::Head(list) => match eval(list, funcs, args) {
             Value::List(items) => items.first().cloned().unwrap_or(Value::Null),
             Value::Str(s) => s.get(0..1).map(|s| Value::Str(s.to_string())).unwrap_or(Value::Null),
             val => val,
         },
-        Expr::Tail(list) => match eval(&list, funcs, args) {
-            Value::List(items) => items.get(1..).map(|items| Value::List(items.iter().cloned().collect())).unwrap_or(Value::Null),
-            Value::Str(s) => s.get(1..).map(|s| if s.len() == 0 { Value::Null } else { Value::Str(s.to_string()) }).unwrap_or(Value::Null),
+        Expr::Tail(list) => match eval(list, funcs, args) {
+            Value::List(items) => items.get(1..).map(|items| Value::List(items.to_vec())).unwrap_or(Value::Null),
+            Value::Str(s) => s.get(1..).map(|s| if s.is_empty() { Value::Null } else { Value::Str(s.to_string()) }).unwrap_or(Value::Null),
             _ => Value::Null,
         },
-        Expr::Fuse(x, y) => match (eval(&x, funcs, args), eval(&y, funcs, args)) {
+        Expr::Fuse(x, y) => match (eval(x, funcs, args), eval(y, funcs, args)) {
             (Value::List(mut x), Value::List(mut y)) => Value::List({ x.append(&mut y); x }),
             (Value::List(mut x), y) => Value::List({ x.push(y); x }),
             (x, Value::List(mut y)) => Value::List({ let mut v = vec![x]; v.append(&mut y); v }),
             (x, y) => Value::List(vec![x, y]),
         },
-        Expr::Pair(x, y) => Value::List(vec![eval(&x, funcs, args), eval(&y, funcs, args)]),
+        Expr::Pair(x, y) => Value::List(vec![eval(x, funcs, args), eval(y, funcs, args)]),
         Expr::Call(f, params) => if let Some(f) = funcs.get(f) {
-            eval(&f.expr, funcs, &params.iter().map(|p| eval(&p, funcs, args)).collect())
+            eval(&f.expr, funcs, &params.iter().map(|p| eval(p, funcs, args)).collect())
         } else {
             Value::Null
         },
-        Expr::Words(x) => if let Value::Str(s) = eval(&x, funcs, args) {
-            Value::List(words(&s).into_iter().map(|s| Value::Str(s)).collect())
+        Expr::Words(x) => if let Value::Str(s) = eval(x, funcs, args) {
+            Value::List(words(&s).into_iter().map(Value::Str).collect())
         } else {
             Value::Null
         },
-        Expr::Litr(x) => if let Value::Str(s) = eval(&x, funcs, args) {
+        Expr::Litr(x) => if let Value::Str(s) = eval(x, funcs, args) {
             Value::from_str(&s).unwrap_or(Value::Null)
         } else {
             Value::Null
         },
-        Expr::Input(x) => input(eval(&x, funcs, args).into_string()),
+        Expr::Input(x) => input(eval(x, funcs, args).into_string()),
         Expr::Print(x) => {
-            let val = eval(&x, funcs, args);
+            let val = eval(x, funcs, args);
             print(val.clone().into_string());
             val
         },
-        Expr::Str(x) => Value::Str(eval(&x, funcs, args).into_string()),
+        Expr::Str(x) => Value::Str(eval(x, funcs, args).into_string()),
         Expr::Value(val) => val.clone(),
         Expr::Local(idx) => args.get(*idx).cloned().unwrap_or(Value::Null),
     }
@@ -370,7 +370,7 @@ fn words(s: &str) -> Vec<String> {
             }
             Some("".to_string())
         })
-        .filter(|s| s.len() > 0)
+        .filter(|s| !s.is_empty())
         .collect()
 }
 
@@ -439,7 +439,7 @@ fn prompt() {
 
     let mut rl = Editor::<()>::new();
     while let Ok(line) = rl.readline(">> ") {
-        rl.add_history_entry(line.as_ref());
+        rl.add_history_entry(&line);
 
         let _ = {
             let tokens = lex(&with_core(&line));
