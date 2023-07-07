@@ -37,11 +37,7 @@ impl Value {
             Some(Value::Num(x))
         } else if let Ok(b) = s.parse() {
             Some(Value::Bool(b))
-        } else if s.starts_with('"') {
-            Some(Value::Str(s[1..].to_string()))
-        } else {
-            None
-        }
+        } else { s.strip_prefix('"').map(|ss| Value::Str(ss.to_string())) }
     }
 
     pub fn into_string(self) -> String {
@@ -51,11 +47,11 @@ impl Value {
             Value::Bool(b) => format!("{}", b),
             Value::List(l) => {
                 let mut s = String::from("[");
-                for i in 0..l.len() {
+                for (i, item) in l.iter().enumerate() {
                     if i != 0 {
                         s += ", ";
                     }
-                    s += &l[i].clone().into_string().to_string();
+                    s += &item.clone().into_string();
                 }
                 s += "]";
                 s
@@ -112,7 +108,6 @@ enum Expr {
 
 #[derive(Debug)]
 struct Func {
-    args: Vec<String>,
     expr: Expr,
 }
 
@@ -130,7 +125,7 @@ fn input(msg: String) -> Value {
     Value::Str(input)
 }
 
-fn eval(expr: &Expr, funcs: &HashMap<String, Func>, args: &Vec<Value>) -> Value {
+fn eval(expr: &Expr, funcs: &HashMap<String, Func>, args: &[Value]) -> Value {
     match expr {
         Expr::If(pred, good, bad) => if eval(pred, funcs, args) == Value::Bool(true) {
             eval(good, funcs, args)
@@ -187,7 +182,8 @@ fn eval(expr: &Expr, funcs: &HashMap<String, Func>, args: &Vec<Value>) -> Value 
         },
         Expr::Pair(x, y) => Value::List(vec![eval(x, funcs, args), eval(y, funcs, args)]),
         Expr::Call(f, params) => if let Some(f) = funcs.get(f) {
-            eval(&f.expr, funcs, &params.iter().map(|p| eval(p, funcs, args)).collect())
+            let args: Vec<_> = params.iter().map(|p| eval(p, funcs, args)).collect();
+            eval(&f.expr, funcs, &args)
         } else {
             Value::Null
         },
@@ -213,7 +209,7 @@ fn eval(expr: &Expr, funcs: &HashMap<String, Func>, args: &Vec<Value>) -> Value 
     }
 }
 
-fn parse_expr(tokens: &mut slice::Iter<Token>, args: &Vec<String>, func_defs: &HashMap<String, usize>) -> Result<Expr, Error> {
+fn parse_expr(tokens: &mut slice::Iter<Token>, args: &[String], func_defs: &HashMap<String, usize>) -> Result<Expr, Error> {
     Ok(match tokens.next().ok_or(Error::ExpectedToken)? {
         Token::If => Expr::If(
             Box::new(parse_expr(tokens, args, func_defs)?),
@@ -309,9 +305,8 @@ fn parse_funcs(mut tokens: slice::Iter<Token>) -> Result<HashMap<String, Func>, 
                     },
                     _ => *n += 1,
                 },
-                None => match tok {
-                    Token::Fn => *state = Some((String::new(), 0usize)),
-                    _ => {},
+                None => if let Token::Fn = tok {
+                    *state = Some((String::new(), 0usize))
                 },
             }
             Some(tok)
@@ -343,7 +338,6 @@ fn parse_funcs(mut tokens: slice::Iter<Token>) -> Result<HashMap<String, Func>, 
         let expr = parse_expr(&mut tokens, &args, &func_defs)?;
 
         funcs.insert(name, Func {
-            args,
             expr,
         });
     }
@@ -446,13 +440,13 @@ fn prompt() {
 
             parse_funcs(tokens.iter()).map(|funcs| {
                 if let Some(main) = funcs.get("main") {
-                    eval(&main.expr, &funcs, &mut vec![])
+                    eval(&main.expr, &funcs, &[])
                 } else {
                     Value::Null
                 }
             })
-            .and_then(|_| parse_expr(&mut tokens.iter(), &vec![], &HashMap::new()).map(|expr| {
-                eval(&expr, &HashMap::new(), &mut vec![])
+            .and_then(|_| parse_expr(&mut tokens.iter(), &[], &HashMap::new()).map(|expr| {
+                eval(&expr, &HashMap::new(), &[])
             }))
         }
             .map(|val| println!("{}", val.into_string()))
@@ -469,7 +463,7 @@ fn exec(fname: &str) {
 
     let _ = parse_funcs(lex(&with_core(&code)).iter()).map(|funcs| {
         if let Some(main) = funcs.get("main") {
-            eval(&main.expr, &funcs, &mut vec![])
+            eval(&main.expr, &funcs, &[])
         } else {
             Value::Null
         }
